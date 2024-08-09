@@ -3,17 +3,24 @@ import time
 import subprocess
 import requests
 import json
+from collections import deque
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+import os
 
-# Telegram Bot Config
-TELEGRAM_TOKEN = 'TELEGRAM_TOKEN'
-CHAT_ID = 'CHAT_ID'
-API_URL = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
+# Load .env
+load_dotenv()
 
-# AbuseIPDB Info
-ABUSEIPDB_API_KEY = 'ABUSEIPDB_API_KEY'
-ABUSEIPDB_API_URL = 'https://api.abuseipdb.com/api/v2/report'
-
-
+# Load .env
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+CHAT_ID = os.getenv('CHAT_ID')
+ABUSEIPDB_API_KEY = os.getenv('ABUSEIPDB_API_KEY')
+LOG_FILE = os.getenv('LOG_FILE', '/var/log/auth.log')
+FAILED_ATTEMPTS_FILE = os.getenv('FAILED_ATTEMPTS_FILE', 'failed_attempts.json')
+MAX_FAILED_ATTEMPTS = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+IPSET_NAME = os.getenv('IPSET_NAME', 'ssh_block_list')
+BLOCK_TIMEOUT = int(os.getenv('BLOCK_TIMEOUT', 2147483))
+MAX_REPORTS_PER_MINUTE = int(os.getenv('MAX_REPORTS_PER_MINUTE', 10))
 
 # Custom Hostname Map (for the Telegram notification)
 HOSTNAME_MAP = {
@@ -21,17 +28,7 @@ HOSTNAME_MAP = {
     'addmore': "custom hostnames",
 }
 
-# SSH Log file (Debian based distros by default)
-LOG_FILE = '/var/log/auth.log'
-# Failed attempts log file
-FAILED_ATTEMPTS_FILE = 'failed_attempts.json'
-
-# Max failet attempts before banning
-MAX_FAILED_ATTEMPTS = 3
-IPSET_NAME = 'ssh_block_list'
-
-# Ban time in seconds (24 days by default. Max 24 days)
-BLOCK_TIMEOUT = 2147483
+report_times = deque(maxlen=MAX_REPORTS_PER_MINUTE)
 
 def get_custom_hostname():
     """Gets the hostname and maps it to the custom name if needed."""
@@ -40,14 +37,33 @@ def get_custom_hostname():
 
 def send_telegram_message(message):
     """Sends the message to the Telegram Bot."""
+    API_URL = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
     payload = {
         'chat_id': CHAT_ID,
         'text': message
     }
     requests.post(API_URL, data=payload)
 
+def can_report_ip():
+    """Checks if the script can report another IP based on the time limit."""
+    current_time = datetime.now()
+
+    # Clear any reports older than a minute
+    while report_times and (current_time - report_times[0] > timedelta(minutes=1)):
+        report_times.popleft()
+
+    if len(report_times) < MAX_REPORTS_PER_MINUTE:
+        report_times.append(current_time)
+        return True
+    else:
+        return False
+
 def report_to_abuseipdb(ip):
     """Reports IP to AbuseIPDB."""
+    if not can_report_ip():
+        print(f'Rate limit reached. Cannot report IP {ip} at this time.')
+        return
+
     headers = {
         'Key': ABUSEIPDB_API_KEY,
         'Content-Type': 'application/json'
@@ -57,7 +73,7 @@ def report_to_abuseipdb(ip):
         'categories': '18',  # Brute-Force
         'comment': 'Detected multiple failed SSH login attempts'
     }
-    response = requests.post(ABUSEIPDB_API_URL, headers=headers, data=json.dumps(data))
+    response = requests.post('https://api.abuseipdb.com/api/v2/report', headers=headers, data=json.dumps(data))
     if response.status_code == 200:
         print(f'IP {ip} reported to AbuseIPDB')
     else:
@@ -70,7 +86,7 @@ def block_ip(ip):
     print(f'IP {ip} blocked with ipset and iptables')
 
 def load_failed_attempts():
-    """Loads failed attempts from file"""
+    """Loads failed attempts from file."""
     try:
         with open(FAILED_ATTEMPTS_FILE, 'r') as file:
             return json.load(file)
@@ -106,7 +122,7 @@ def monitor_ssh_log():
                     time.sleep(1)
                     continue
                 
-                # Searchs for SSH attempts
+                # Searches for SSH attempts
                 if 'Failed password' in line:
                     # Gets IP and username
                     ip_match = re.search(r'from (\S+)', line)
@@ -135,7 +151,7 @@ def monitor_ssh_log():
                             # Resets failed attempts
                             failed_attempts[ip] = 0
                             save_failed_attempts(failed_attempts)
-                        
+
     except FileNotFoundError:
         print(f'Error: Log file {LOG_FILE} not found')
     except Exception as e:
