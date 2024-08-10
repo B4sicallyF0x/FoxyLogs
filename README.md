@@ -19,6 +19,7 @@ A simple Python script that monitors SSH login attempts. After detecting 3 inval
    - `re`
    - `subprocess`
    - `time`
+   - `dotenv`
 3. **System Tools**:
    - `ipset`
    - `iptables`
@@ -34,7 +35,7 @@ A simple Python script that monitors SSH login attempts. After detecting 3 inval
 2. **Install Dependencies**:
    Install the required Python packages using pip:
    ```bash
-   pip install requests
+   pip install requests python-dotenv
    ```
 
 3. **Install System Tools**:
@@ -53,44 +54,27 @@ A simple Python script that monitors SSH login attempts. After detecting 3 inval
 
 ## Configuration
 
-1. **Telegram Bot Configuration**:
-   Replace the `TELEGRAM_TOKEN` and `CHAT_ID` in the script with your actual token and chat ID.
-   ```python
-   TELEGRAM_TOKEN = 'YOUR_TELEGRAM_TOKEN'
-   CHAT_ID = 'YOUR_CHAT_ID'
+1. **Create a `.env` File**:
+   In the directory where your script is located, create a `.env` file and add the following configurations:
+   ```bash
+   TELEGRAM_TOKEN=your_telegram_token_here
+   CHAT_ID=your_chat_id_here
+   ABUSEIPDB_API_KEY=your_abuseipdb_api_key_here
+   LOG_FILE=/var/log/auth.log
+   FAILED_ATTEMPTS_FILE=failed_attempts.json
+   MAX_FAILED_ATTEMPTS=3
+   IPSET_NAME=ssh_block_list
+   BLOCK_TIMEOUT=2147483
+   MAX_REPORTS_PER_MINUTE=10
    ```
 
-2. **AbuseIPDB Configuration**:
-   Replace the `ABUSEIPDB_API_KEY` with your actual API key.
-   ```python
-   ABUSEIPDB_API_KEY = 'YOUR_ABUSEIPDB_API_KEY'
-   ```
-
-3. **Hostname Mapping**:
-   You can customize the hostnames by modifying the `HOSTNAME_MAP` dictionary.
+2. **Hostname Mapping**:
+   You can customize the hostnames by modifying the `HOSTNAME_MAP` dictionary directly in the script:
    ```python
    HOSTNAME_MAP = {
        'hostname': "custom hostname",
        'addmore': "custom hostnames",
    }
-   ```
-
-4. **Log File Location**:
-   By default, the script monitors `/var/log/auth.log`. If your SSH log file is in a different location, update the `LOG_FILE` variable.
-   ```python
-   LOG_FILE = '/path/to/your/auth.log'
-   ```
-
-5. **Max Failed Attempts**:
-   The default maximum failed attempts before banning an IP is set to 3. You can change this by modifying the `MAX_FAILED_ATTEMPTS` variable.
-   ```python
-   MAX_FAILED_ATTEMPTS = 3
-   ```
-
-6. **Block Timeout**:
-   The default block timeout is set to 24 days. You can change this by modifying the `BLOCK_TIMEOUT` variable.
-   ```python
-   BLOCK_TIMEOUT = 2147483
    ```
 
 ## Running the Script
